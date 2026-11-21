@@ -1,0 +1,31 @@
+# Python / tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.idea/
+.vscode/
+.claude/
+
+# Portable Jupyter install - created by start_jupyter.* on first run
+jupyter_bin/
+
+# Jupyter data: whitelist of what the project ships (KB development/mcp-kb/install#files).
+# Everything else there is personal or runtime state: token.txt, runtime/, data/, workspaces,
+# and every knowledge-base area except the plugin's own docs.
+jupyter_data/*
+!jupyter_data/mcp_docs/
+
+!jupyter_data/config/
+jupyter_data/config/*
+!jupyter_data/config/jupyter_server_config.json
+!jupyter_data/config/lab/
+jupyter_data/config/lab/*
+!jupyter_data/config/lab/user-settings/
+
+!jupyter_data/kb/
+jupyter_data/kb/*
+!jupyter_data/kb/development/
+jupyter_data/kb/development/*
+!jupyter_data/kb/development/topic.ipynb
+!jupyter_data/kb/development/mcp-kb/
