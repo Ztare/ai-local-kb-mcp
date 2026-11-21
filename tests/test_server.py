@@ -103,12 +103,12 @@ def test_protocol_and_profiles(server):
     assert tools["search"]["inputSchema"]["required"] == ["text"]
     assert "outputSchema" not in tools["search"]
     full = Mcp(base, "?profile=full&lang=ru")
-    assert len(full.rpc("tools/list")["result"]["tools"]) == 14
+    assert len(full.rpc("tools/list")["result"]["tools"]) == 15
     txt, r = lite.call("delete", path="x")
     assert r["isError"] and txt.startswith("ERROR not_allowed") and "full" in txt
     admin = Mcp(base.replace("/mcp/kb", ""))
     admin.url = base + "/mcp/kb-admin"
-    assert len(admin.rpc("tools/list")["result"]["tools"]) == 18
+    assert len(admin.rpc("tools/list")["result"]["tools"]) == 19
     st, body = _req("GET", base + "/mcp/docs/en/lite/search", token=False)
     assert st == 200 and body.startswith("## search")
 

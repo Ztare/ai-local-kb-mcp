@@ -349,3 +349,39 @@ def test_kernel_language_info_from_interpreter():
     assert kernel_language_info([sys.executable, "-m", "ipykernel_launcher"]) == IPythonKernel.language_info
     assert kernel_language_info(["no-such-python-xyz"]) is None
     assert kernel_language_info([]) is None
+
+
+@aio
+async def test_replace_lines(kb):
+    c = Ctx()
+    p = "coding/python/asyncio#tasks"
+    await kb.save_section(c, p, "Задачи", "a\nx = 1\nb\nx = 1\nc")
+    # several matches -> error, nothing written
+    e = await err(kb.replace_lines, c, p, "x = 1", "x = 2")
+    assert e.code == "ambiguous" and len(e.options) == 2 and "save_section" in e.hint
+    assert "line 2" in e.options[0] and "'a'" in e.options[0]
+    # more lines make it unique; trailing spaces / trailing newline ignored
+    r = await kb.replace_lines(c, p, "b  \nx = 1\n", "b\nx = 2")
+    assert r["action"] == "updated" and r["path"] == p
+    assert kb.get(c, p)["section"]["content"] == "a\nx = 1\nb\nx = 2\nc"
+    # insert (old line kept in new) and delete (empty new)
+    await kb.replace_lines(c, p, "c", "c\nd")
+    await kb.replace_lines(c, p, ["a", "x = 1"], "")
+    assert kb.get(c, p)["section"]["content"] == "b\nx = 2\nc\nd"
+    r = await kb.replace_lines(c, p, "d", "d")
+    assert r.get("unchanged")
+    sec = kb.articles["coding/python/asyncio"].find("tasks")
+    assert sec.title == "Задачи" and sec.level == 2 and sec.meta["changed_by"] == "mcp"
+    # part of a line / no match
+    e = await err(kb.replace_lines, c, p, "x =", "y =")
+    assert e.code == "not_found" and e.options == ["x = 2"]
+    e = await err(kb.replace_lines, c, p, "x = 3\nzzz", "q")
+    assert e.code == "not_found" and "x = 2" in e.options
+    e = await err(kb.replace_lines, c, "coding/python/asyncio", "a", "b")
+    assert e.code == "invalid_input" and "new-id" not in e.hint and 'get("coding/python/asyncio")' in e.hint
+    e = await err(kb.replace_lines, c, p, "", "b")
+    assert e.code == "invalid_input"
+    # head too
+    await kb.replace_lines(c, "coding/python/asyncio#head", "Асинхронность в Python", "Asyncio в Python")
+    assert kb.get(c, "coding/python/asyncio")["head"]["content"] == "Asyncio в Python"
+    assert not Ctx(profile="lite").has("replace_lines") and Ctx(profile="std").has("replace_lines")

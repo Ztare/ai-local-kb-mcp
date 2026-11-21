@@ -41,6 +41,7 @@ SCHEMAS = {
     "save_topic": ({"path": S, "title": S, "content": S}, ["path", "title", "content"]),
     "save_article": ({"path": S, "title": S, "content": S}, ["path", "title", "content"]),
     "save_section": ({"path": S, "title": S, "content": S}, ["path", "title", "content"]),
+    "replace_lines": ({"path": S, "old": S, "new": S}, ["path", "old", "new"]),
     "add_section_tags": ({"path": S, "tags": A}, ["path", "tags"]),
     "drop_section_tags": ({"path": S, "tags": A}, ["path", "tags"]),
     "delete": ({"path": S}, ["path"]),
@@ -55,7 +56,7 @@ LITE_SCHEMAS = {
 }
 ORDER = ["index", "get", "search", "search_regex", "section_tags", "search_section_tags",
          "search_section_tags_regex", "sections_by_tag", "save_topic", "save_article",
-         "save_section", "add_section_tags", "drop_section_tags", "delete",
+         "save_section", "replace_lines", "add_section_tags", "drop_section_tags", "delete",
          "unindexed", "get_full", "put_article", "put_sections"]
 ALIASES = {"text": ["substrings", "query", "q"], "substrings": ["text", "query", "q"],
            "path": ["id"], "tags": ["tag"]}
@@ -203,6 +204,8 @@ async def _dispatch(kb, ctx, name, v):
         return kb.sections_by_tag(ctx, v["tag"], v["path"], _bool(v.get("with_tags")))
     if name in ("save_topic", "save_article", "save_section"):
         return await getattr(kb, name)(ctx, v["path"], v["title"], v["content"])
+    if name == "replace_lines":
+        return await kb.replace_lines(ctx, v["path"], v["old"], v["new"])
     if name in ("add_section_tags", "drop_section_tags"):
         return await getattr(kb, name)(ctx, v["path"], v["tags"])
     if name == "delete":

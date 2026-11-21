@@ -15,7 +15,7 @@ from .texts import t, translit
 MAX_DEPTH = 3
 LITE = {"get", "search", "save_article", "save_section"}
 STD = LITE | {"index", "section_tags", "search_section_tags", "sections_by_tag",
-              "save_topic", "add_section_tags"}
+              "save_topic", "add_section_tags", "replace_lines"}
 FULL = STD | {"search_regex", "search_section_tags_regex", "drop_section_tags", "delete"}
 ADMIN = FULL | {"unindexed", "get_full", "put_article", "put_sections"}
 PROFILES = {"lite": LITE, "std": STD, "full": FULL, "admin": ADMIN}
@@ -725,6 +725,61 @@ class KB:
         self._note(ctx, ref, newpath)
         return {"kind": "write", "path": newpath, "action": action}
 
+    async def replace_lines(self, ctx, path, old, new, who="mcp"):
+        """Replace a block of whole lines in a section's content (KB api#replace-lines).
+
+        `old` must match exactly one run of consecutive lines (trailing spaces ignored);
+        `new` replaces it, empty `new` deletes it. Several matches -> error, nothing written.
+        """
+        old_l = text_lines(self._need_text(ctx, "old", old))
+        new_l = text_lines(new)
+        ref = Ref(self._need_text(ctx, "path", path))
+        if not ref.sid:
+            hit = self.lookup(ref.parts)
+            p = hit[1] if hit and hit[0] != "root" else ref.obj
+            raise KbError("invalid_input", ctx.t("need_section", path=ref.raw),
+                          ctx.t("hint_need_existing_section", call=ctx.call("get", p)))
+        kind, doc, sec = self.resolve(ctx, ref.raw)
+        lines = sec.content.split("\n") if sec.content else []
+        want = [x.rstrip() for x in old_l]
+        have = [x.rstrip() for x in lines]
+        n = len(want)
+        found = [i for i in range(len(have) - n + 1) if have[i:i + n] == want]
+        if not found:
+            self._old_not_found(ctx, sec, old_l, lines)
+        if len(found) > 1:
+            opts = []
+            for i in found:
+                before = lines[i - 1].strip() if i > 0 else ""
+                after = lines[i + n].strip() if i + n < len(lines) else ""
+                opts.append(ctx.t("match_at", line=i + 1, before=before[:80], after=after[:80]))
+            raise KbError("ambiguous", ctx.t("old_ambiguous", count=len(found), path=sec.path),
+                          ctx.t("hint_ambiguous", call=ctx.call("save_section", sec.path, sec.title, ...)),
+                          opts)
+        i = found[0]
+        content = "\n".join(lines[:i] + new_l + lines[i + n:])
+        src = store.build_source(sec.level, sec.title, content)
+        if store.src_of(sec.cell) == src:
+            return {"kind": "write", "path": sec.path, "action": "updated", "unchanged": True}
+        sec.cell["source"] = src
+        store.touch(sec.cell, who, who == "indexer")
+        await self._save(doc, who)
+        return {"kind": "write", "path": sec.path, "action": "updated"}
+
+    def _old_not_found(self, ctx, sec, old_l, lines):
+        hint_get = ctx.call("get", sec.path)
+        part = old_l[0].strip() if len(old_l) == 1 else ""
+        if part:
+            inside = [x for x in lines if part in x]
+            if inside:  # a piece of a line instead of the whole line
+                raise KbError("not_found", ctx.t("old_partial", path=sec.path),
+                              ctx.t("hint_old_partial"), [x.strip()[:200] for x in inside[:ctx.limit]])
+        first = next((x for x in old_l if x.strip()), "")
+        near = difflib.get_close_matches(first.strip(), [x.strip() for x in lines if x.strip()],
+                                         n=min(3, ctx.limit), cutoff=0.5)
+        raise KbError("not_found", ctx.t("old_not_found", path=sec.path),
+                      ctx.t("hint_old_not_found", call=hint_get), [x[:200] for x in near])
+
     def _tag_target(self, ctx, path):
         kind, doc, sec = self.resolve(ctx, self._need_text(ctx, "path", path))
         if kind != "section":
@@ -952,6 +1007,22 @@ class KB:
         await self._save(doc, "indexer")
         return {"kind": "write", "path": doc.path, "action": "updated",
                 "version": self.doc_by_file(doc.file).version}
+
+
+def text_lines(v):
+    """Lines of an `old` / `new` argument: a string (lenient like content) or a list of lines.
+    One trailing newline is ignored; empty -> no lines (deletion)."""
+    if v is None:
+        return []
+    if isinstance(v, list):
+        s = "\n".join(str(x) for x in v)
+    else:
+        s = str(v).replace("\r\n", "\n")
+        if "\n" not in s and "\\n" in s:
+            s = s.replace("\\n", "\n").replace("\\t", "\t").replace('\\"', '"')
+    if s.endswith("\n"):
+        s = s[:-1]
+    return s.split("\n") if s else []
 
 
 def as_subs(v):
