@@ -385,3 +385,29 @@ async def test_replace_lines(kb):
     await kb.replace_lines(c, "coding/python/asyncio#head", "Асинхронность в Python", "Asyncio в Python")
     assert kb.get(c, "coding/python/asyncio")["head"]["content"] == "Asyncio в Python"
     assert not Ctx(profile="lite").has("replace_lines") and Ctx(profile="std").has("replace_lines")
+
+
+@aio
+async def test_call_log(kb):
+    from kb_mcp.mcp import tool_result
+
+    class Log:
+        def __init__(self):
+            self.lines = []
+
+        def info(self, fmt, *a):
+            self.lines.append(fmt % a)
+
+    log = Log()
+    c = Ctx(profile="std")
+    await tool_result(kb, c, "get", {"path": "coding/python/asyncio"}, log)
+    await tool_result(kb, c, "get", {"path": "coding/python/nope"}, log)
+    await tool_result(kb, c, "search", {"substrings": ["секрет"]}, log)
+    await tool_result(kb, c, "replace_lines", {"path": "coding/python/asyncio#tasks",
+                                               "old": "Создание задач: create_task", "new": "тайный текст"}, log)
+    assert log.lines == [
+        "kb-mcp [std] get coding/python/asyncio -> ok",
+        "kb-mcp [std] get coding/python/nope -> not_found",
+        "kb-mcp [std] search -> ok",
+        "kb-mcp [std] replace_lines coding/python/asyncio#tasks -> ok",
+    ]

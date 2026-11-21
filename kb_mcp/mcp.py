@@ -224,11 +224,23 @@ def _result(ctx, text, structured, is_error):
     return out
 
 
+def log_call(log, ctx, name, args, outcome):
+    """One short line per tool call: profile, command, path, ok / error code - no texts (KB plugin#call-log)."""
+    if not log:
+        return
+    path = _arg(args, "path") if isinstance(args, dict) else None
+    where = "" if path is None else " " + (str(path) if str(path) else '""')[:200]
+    log.info("kb-mcp [%s] %s%s -> %s", ctx.profile, name, where, outcome)
+
+
 async def tool_result(kb, ctx, name, args, log=None):
     try:
         res = await call_tool(kb, ctx, name, args)
-        return _result(ctx, render.text(res, ctx), render.structured(res, ctx), False)
+        out = _result(ctx, render.text(res, ctx), render.structured(res, ctx), False)
+        log_call(log, ctx, name, args, "unchanged" if res.get("unchanged") else "ok")
+        return out
     except KbError as e:
+        log_call(log, ctx, name, args, e.code)
         return _result(ctx, render.error_text(e), render.error_structured(e), True)
     except Exception as e:  # never leak internals as a protocol error
         if log:
